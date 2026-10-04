@@ -1,0 +1,11 @@
+'use strict';
+const CACHE='gamefinder-shell-v10';
+const SHELL=['/','/index.html','/style.css','/mobile.css','/browser.css','/data.js','/locales.js','/catalog-locales.js','/feature-locales.js','/links.js','/genres.js','/browser.js','/console.js','/mobile-platforms.js','/app.js','/identify.js','/chat.js','/voice-inline.js','/install.js','/manifest.webmanifest','/assets/app-icon.svg','/assets/app-192.png','/assets/app-512.png','/assets/icon.png'];
+self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)));self.skipWaiting();});
+self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('gamefinder-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+const IMAGE_CACHE='gamefinder-images-v1';
+self.addEventListener('fetch',event=>{
+ const mediaURL=new URL(event.request.url);const officialImage=['shared.akamai.steamstatic.com','cdn.akamai.steamstatic.com','is1-ssl.mzstatic.com','is2-ssl.mzstatic.com','play-lh.googleusercontent.com','image.api.playstation.com'].includes(mediaURL.hostname);
+ if(event.request.method==='GET'&&event.request.destination==='image'&&(officialImage||(mediaURL.origin===self.location.origin&&mediaURL.pathname.startsWith('/assets/')))){
+ event.respondWith((async()=>{const cache=await caches.open(IMAGE_CACHE),saved=await cache.match(event.request);if(saved)return saved;try{const response=await fetch(event.request);if(response.ok||response.type==='opaque'){await cache.put(event.request,response.clone());const keys=await cache.keys();if(keys.length>120)await Promise.all(keys.slice(0,keys.length-120).map(key=>cache.delete(key)));}return response;}catch{return new Response('',{status:503});}})());return;}
+const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==self.location.origin||url.pathname.startsWith('/api/'))return;event.respondWith(fetch(event.request).then(response=>{if(response.ok&&SHELL.includes(url.pathname)){const copy=response.clone();event.waitUntil(caches.open(CACHE).then(cache=>cache.put(event.request,copy)));}return response;}).catch(async()=>await caches.match(event.request)||(event.request.mode==='navigate'?await caches.match('/index.html'):undefined)||new Response('Offline',{status:503})));});

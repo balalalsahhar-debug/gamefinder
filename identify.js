@@ -1,0 +1,21 @@
+'use strict';
+let identifyAttachmentURL='',identifyFile=null,identifyController=null,identifyGeneration=0;
+const identifyArea=document.getElementById('attachment'),identifyStatus=document.getElementById('identify-status');
+function identifyMessage(key){identifyStatus.textContent=t(key);}
+function clearIdentify(){identifyGeneration++;identifyController?.abort();identifyController=null;if(identifyAttachmentURL)URL.revokeObjectURL(identifyAttachmentURL);identifyAttachmentURL='';identifyFile=null;identifyArea.replaceChildren();identifyArea.hidden=true;document.getElementById('image-input').value='';identifyStatus.textContent='';}
+async function identifyGame(payload){
+ if(identifyController)return;const generation=++identifyGeneration,controller=new AbortController();identifyController=controller;identifyMessage('identifyWorking');const timeout=setTimeout(()=>controller.abort(),85000);document.getElementById('identify-result').replaceChildren();
+ const buttons=[...document.querySelectorAll('#video-form button,#attachment button.identify-action')];buttons.forEach(b=>b.disabled=true);
+ try{
+  const response=await fetch('/api/identify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,lang:language}),signal:controller.signal});const data=await response.json();if(generation!==identifyGeneration)return;if(!response.ok){identifyMessage(translations.en[data.error]?data.error:'aiFailed');return;}
+  const result=document.getElementById('identify-result');if(data.videoTitle)result.append(el('p','muted',data.videoTitle));if(!data.gameName){identifyMessage('identifyUnknown');if(data.evidence)result.append(el('p','muted',data.evidence));return;}
+  result.append(el('strong','',t(data.confidence==='high'?'identifyFound':'identifyPossible',{name:data.gameName})));if(data.evidence)result.append(el('p','muted',data.evidence));const run=el('button','secondary',t('identifySearch'));run.type='button';run.addEventListener('click',()=>runIdentifiedSearch(data.gameName));result.append(run);identifyMessage('identifyComplete');
+  await runIdentifiedSearch(data.gameName);
+ }catch(error){if(generation===identifyGeneration)identifyMessage(error.name==='AbortError'?'aiTimeout':'aiOffline');}
+ finally{clearTimeout(timeout);if(identifyController===controller)identifyController=null;buttons.forEach(b=>b.disabled=false);}
+}
+async function runIdentifiedSearch(name){document.getElementById('query').value=name;document.getElementById('genre-filter').value='';document.getElementById('source-filter').value='All';document.getElementById('platform-filter').value='All';document.getElementById('budget-filter').value='Any';document.getElementById('friends-filter').checked=false;await search();}
+document.getElementById('upload-button').addEventListener('click',()=>document.getElementById('image-input').click());
+document.getElementById('image-input').addEventListener('change',event=>{const file=event.target.files[0];if(!file)return;clearIdentify();if(!['image/png','image/jpeg','image/webp'].includes(file.type)){identifyMessage('invalidImage');return;}if(file.size>2*1024*1024){identifyMessage('image2mb');return;}identifyFile=file;identifyAttachmentURL=URL.createObjectURL(file);const image=el('img');image.src=identifyAttachmentURL;image.alt=t('imageAlt');const run=el('button','primary identify-action',t('identifyAction'));run.type='button';run.addEventListener('click',async()=>{if(!identifyFile)return;try{const image=await fileData(identifyFile);await identifyGame({kind:'image',image});}catch{identifyMessage('invalidImage');}});const remove=el('button','remove',t('remove'));remove.type='button';remove.addEventListener('click',clearIdentify);identifyArea.append(image,run,remove);identifyArea.hidden=false;identifyMessage('identifyImageReady');});
+document.getElementById('video-button').addEventListener('click',()=>{const form=document.getElementById('video-form');form.hidden=!form.hidden;if(!form.hidden)document.getElementById('video-url').focus();});
+document.getElementById('video-form').addEventListener('submit',event=>{event.preventDefault();const url=document.getElementById('video-url').value.trim();identifyGame({kind:'video',url});});
